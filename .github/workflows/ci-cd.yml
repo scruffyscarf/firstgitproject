@@ -1,23 +1,22 @@
-name: Simple Docker CI/CD
+name: Docker CI/CD Test
 
 on: [push]
 
 jobs:
-  build-and-run:
+  build-and-test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-
-    - name: Build and test
+    
+    - name: Build Docker image
       run: |
         docker build -t myapp .
         
-        docker run -d --name myapp -p 5000:5000 myapp
+    - name: Test container
+      run: |
+        docker run -d --name testapp -p 5000:5000 myapp
         sleep 5
         
-        docker ps -a
-        docker logs myapp
+        docker logs testapp
         
-        curl -s http://localhost:5000 || echo "App failed"
-        
-        docker stop myapp
+        curl -s http://localhost:5000 || echo "App test failed"

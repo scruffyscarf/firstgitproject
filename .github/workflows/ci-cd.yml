@@ -1,21 +1,71 @@
-name: Docker CI/CD Test
+name: Docker CI/CD Pipeline
 
-on: 
+on:
   push:
-    branches: [ myapp ]
+    branches: [myapp]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: |
-          docker build -t myapp .
-          docker run --rm -d -p 5000:5000 --name testapp myapp
-          sleep 5
-          docker ps -a
-          docker logs testapp
-          curl -v http://localhost:5000 || true
-          docker stop testapp
+    - name: Build Docker image
+      run: |
+        docker build -t myapp .
+        docker images
+
+    - name: Debug container
+      run: |
+        # Запускаем контейнер в интерактивном режиме для диагностики
+        echo "=== Запуск контейнера в интерактивном режиме ==="
+        docker run --name testapp -it --rm myapp sh -c "python app.py || (echo '=== Ошибка при запуске ==='; ls -la; cat app.py; exit 1)"
+        
+        # Альтернативный вариант для фонового режима
+        echo "=== Попытка запуска в фоновом режиме ==="
+        docker run -d --name testapp -p 5000:5000 myapp
+        sleep 5
+        echo "=== Состояние контейнера ==="
+        docker ps -a
+        echo "=== Логи контейнера ==="
+        docker logs testapp || true
+        echo "=== Проверка портов ==="
+        docker port testapp || true
+        echo "=== Проверка процессов ==="
+        docker exec testapp ps aux || true
+        echo "=== Попытка запроса ==="
+        curl -v http://localhost:5000 || true
+        docker stop testapp || true
+
+    - name: Save image
+      if: success()
+      run: |
+        mkdir -p artifacts
+        docker save myapp -o artifacts/myapp.tar
+      
+    - uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: myapp-image
+        path: artifacts/myapp.tar
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - uses: actions/download-artifact@v4
+      with:
+        name: myapp-image
+        path: artifacts
+
+    - name: Load image
+      run: docker load -i artifacts/myapp.tar
+
+    - name: Deploy to production
+      run: |
+        docker run -d --name myapp -p 5000:5000 myapp
+        sleep 5
+        docker ps -a
+        docker logs myapp

@@ -2,7 +2,7 @@ name: Docker CI/CD Pipeline
 
 on:
   push:
-    branches: [myapp]
+    branches: [main]
 
 jobs:
   build-and-test:
@@ -13,29 +13,42 @@ jobs:
     - name: Build Docker image
       run: |
         docker build -t myapp .
+        echo "=== Список образов ==="
         docker images
 
-    - name: Debug container
+    - name: Test container
       run: |
-        # Запускаем контейнер в интерактивном режиме для диагностики
-        echo "=== Запуск контейнера в интерактивном режиме ==="
-        docker run --name testapp -it --rm myapp sh -c "python app.py || (echo '=== Ошибка при запуске ==='; ls -la; cat app.py; exit 1)"
-        
-        # Альтернативный вариант для фонового режима
-        echo "=== Попытка запуска в фоновом режиме ==="
+        # Запускаем контейнер в фоновом режиме
+        echo "=== Запуск контейнера ==="
         docker run -d --name testapp -p 5000:5000 myapp
-        sleep 5
-        echo "=== Состояние контейнера ==="
+        
+        # Ждем 10 секунд и проверяем состояние
+        echo "=== Ожидание старта ==="
+        sleep 10
+        
+        echo "=== Диагностика ==="
+        echo "1. Состояние контейнера:"
         docker ps -a
-        echo "=== Логи контейнера ==="
+        echo "\n2. Логи контейнера:"
         docker logs testapp || true
-        echo "=== Проверка портов ==="
-        docker port testapp || true
-        echo "=== Проверка процессов ==="
+        echo "\n3. Проверка процессов:"
         docker exec testapp ps aux || true
-        echo "=== Попытка запроса ==="
-        curl -v http://localhost:5000 || true
-        docker stop testapp || true
+        echo "\n4. Проверка портов:"
+        docker port testapp || true
+        
+        # Проверяем доступность приложения
+        echo "\n=== Тестирование приложения ==="
+        if curl -s --retry 3 --retry-delay 5 http://localhost:5000 | grep "Hello, Docker"; then
+          echo "✓ Приложение работает корректно"
+          docker stop testapp
+          exit 0
+        else
+          echo "× Приложение не отвечает"
+          echo "=== Дополнительная диагностика ==="
+          docker exec testapp ls -la /app || true
+          docker exec testapp cat /app/app.py || true
+          exit 1
+        fi
 
     - name: Save image
       if: success()
@@ -66,6 +79,8 @@ jobs:
     - name: Deploy to production
       run: |
         docker run -d --name myapp -p 5000:5000 myapp
-        sleep 5
+        sleep 10
+        echo "=== Состояние production-контейнера ==="
         docker ps -a
+        echo "=== Логи production-контейнера ==="
         docker logs myapp

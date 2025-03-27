@@ -2,7 +2,7 @@ name: Docker CI/CD Test
 
 on: 
   push:
-    branches: [ main ]
+    branches: [ myapp ]
 
 jobs:
   build-and-test:
